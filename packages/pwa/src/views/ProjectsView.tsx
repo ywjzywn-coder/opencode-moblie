@@ -134,9 +134,9 @@ export function ProjectsView({ onBack, onOpenProject }: Props) {
                 </div>
               </div>
               <div style={{ textAlign: "right", flexShrink: 0 }}>
-                <div style={{ fontSize: 12, color: "var(--text-dim)" }}>{p.sessionCount} 个会话</div>
+                <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{p.sessionCount} 个会话</div>
                 {p.lastUpdated > 0 && (
-                  <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 2 }}>
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
                     {new Date(p.lastUpdated).toLocaleDateString()}
                   </div>
                 )}
@@ -149,7 +149,7 @@ export function ProjectsView({ onBack, onOpenProject }: Props) {
                 disabled={deleting === p.directory}
                 style={{
                   flexShrink: 0, background: "none", border: "none", padding: 6,
-                  color: "var(--danger)", display: "flex", alignItems: "center",
+                  color: "var(--error)", display: "flex", alignItems: "center",
                 }}
                 title="删除项目及所有会话"
               >

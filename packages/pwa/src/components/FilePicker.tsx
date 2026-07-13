@@ -31,7 +31,7 @@ export function FilePicker({ onSelect, onClose }: Props) {
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 100, display: "flex", alignItems: "flex-end" }} onClick={onClose}>
-      <div style={{ background: "var(--bg-elev)", width: "100%", maxHeight: "70vh", borderRadius: "20px 20px 0 0", padding: 16, paddingBottom: "calc(16px + var(--safe-bottom))", display: "flex", flexDirection: "column" }} onClick={(e) => e.stopPropagation()}>
+      <div style={{ background: "var(--bg-panel)", width: "100%", maxHeight: "70vh", borderRadius: "20px 20px 0 0", padding: 16, paddingBottom: "calc(16px + var(--safe-bottom))", display: "flex", flexDirection: "column" }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
           <span style={{ fontWeight: 600 }}>附加文件</span>
           <button className="back-btn" onClick={onClose}>✕</button>
@@ -67,7 +67,7 @@ export function FilePicker({ onSelect, onClose }: Props) {
                 </div>
                 <div className="sub" style={{ wordBreak: "break-all" }}>{path}</div>
               </div>
-              <span style={{ color: "var(--accent)", flexShrink: 0 }}>+</span>
+              <span style={{ color: "var(--primary)", flexShrink: 0 }}>+</span>
             </div>
           ))}
         </div>

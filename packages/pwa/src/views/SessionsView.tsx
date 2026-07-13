@@ -100,7 +100,7 @@ export function SessionsView({ directory, onBack, onOpenChat }: Props) {
               </div>
               <button
                 onClick={(e) => { e.stopPropagation(); deleteSession(s.id); }}
-                style={{ fontSize: 11, padding: "4px 8px", color: "var(--danger)" }}
+                style={{ fontSize: 11, padding: "4px 8px", color: "var(--error)" }}
               >删除</button>
             </div>
           ))}

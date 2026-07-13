@@ -63,7 +63,7 @@ export function DiffView({ sessionId, onBack }: Props) {
                 <div className="sub">
                   <span style={{ color: "var(--success)" }}>+{d.additions}</span>
                   {" "}
-                  <span style={{ color: "var(--danger)" }}>-{d.deletions}</span>
+                  <span style={{ color: "var(--error)" }}>-{d.deletions}</span>
                 </div>
               </div>
             </div>

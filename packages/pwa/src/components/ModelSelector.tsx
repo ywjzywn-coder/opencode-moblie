@@ -56,7 +56,7 @@ export function ModelSelector({ current, onSelect, onClose }: Props) {
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 100, display: "flex", alignItems: "flex-end" }} onClick={onClose}>
-      <div style={{ background: "var(--bg-elev)", width: "100%", maxHeight: "70vh", overflowY: "auto", borderRadius: "20px 20px 0 0", padding: 16, paddingBottom: "calc(16px + var(--safe-bottom))" }} onClick={(e) => e.stopPropagation()}>
+      <div style={{ background: "var(--bg-panel)", width: "100%", maxHeight: "70vh", overflowY: "auto", borderRadius: "20px 20px 0 0", padding: 16, paddingBottom: "calc(16px + var(--safe-bottom))" }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
           <span style={{ fontWeight: 600 }}>选择模型</span>
           <button className="back-btn" onClick={onClose}>✕</button>
@@ -73,12 +73,12 @@ export function ModelSelector({ current, onSelect, onClose }: Props) {
                   key={m.providerID + m.id}
                   className="list-item"
                   onClick={() => onSelect({ providerID: m.providerID, modelID: m.id })}
-                  style={isCurrent ? { borderColor: "var(--accent)" } : undefined}
+                  style={isCurrent ? { borderColor: "var(--primary)" } : undefined}
                 >
                   <div className="meta">
                     <div className="name" style={{ fontSize: 14, display: "flex", alignItems: "center", gap: 6 }}>
                       {m.name}
-                      {isDefault && <span style={{ fontSize: 10, color: "var(--accent)", background: "var(--accent-dim)", padding: "1px 5px", borderRadius: 4 }}>默认</span>}
+                      {isDefault && <span style={{ fontSize: 10, color: "var(--primary)", background: "var(--primary-dim)", padding: "1px 5px", borderRadius: 4 }}>默认</span>}
                     </div>
                     <div className="sub" style={{ display: "flex", gap: 8 }}>
                       <span>{m.id}</span>
@@ -86,7 +86,7 @@ export function ModelSelector({ current, onSelect, onClose }: Props) {
                       {m.attachment && <span title="支持附件">📎</span>}
                     </div>
                   </div>
-                  {isCurrent && <span style={{ color: "var(--accent)", flexShrink: 0 }}>✓</span>}
+                  {isCurrent && <span style={{ color: "var(--primary)", flexShrink: 0 }}>✓</span>}
                 </div>
               );
             })}

@@ -248,9 +248,9 @@ export function ChatView({ sessionId, onBack, onOpenDiff }: Props) {
       {attachedFiles.length > 0 && (
         <div style={{ display: "flex", gap: 6, padding: "6px 12px", flexWrap: "wrap", borderTop: "1px solid var(--border)" }}>
           {attachedFiles.map((f) => (
-            <span key={f.path} style={{ background: "var(--bg-elev2)", borderRadius: 6, padding: "4px 8px", fontSize: 12, display: "flex", alignItems: "center", gap: 4 }}>
+            <span key={f.path} style={{ background: "var(--bg-element)", borderRadius: 6, padding: "4px 8px", fontSize: 12, display: "flex", alignItems: "center", gap: 4 }}>
               📎 {f.name}
-              <button onClick={() => removeFile(f.path)} style={{ background: "none", border: "none", padding: 0, fontSize: 14, color: "var(--text-dim)", lineHeight: 1 }}>✕</button>
+              <button onClick={() => removeFile(f.path)} style={{ background: "none", border: "none", padding: 0, fontSize: 14, color: "var(--text-muted)", lineHeight: 1 }}>✕</button>
             </span>
           ))}
         </div>
@@ -267,8 +267,8 @@ export function ChatView({ sessionId, onBack, onOpenDiff }: Props) {
           style={{
             flexShrink: 0, width: 38, height: 44, padding: 0, fontSize: 15,
             display: "flex", alignItems: "center", justifyContent: "center",
-            background: showThinking ? "var(--accent-dim)" : "var(--bg-elev2)",
-            color: showThinking ? "var(--accent)" : "var(--text-dim)",
+            background: showThinking ? "var(--primary-dim)" : "var(--bg-element)",
+            color: showThinking ? "var(--accent)" : "var(--text-muted)",
             border: showThinking ? "1px solid var(--accent)" : "1px solid var(--border)",
           }}
           disabled={sending}
@@ -344,14 +344,14 @@ function PartsRenderer({ parts, fallback, showThinking }: { parts: Part[]; fallb
         }
         if (p.type === "tool") {
           return (
-            <div key={i} style={{ fontSize: 12, color: "var(--text-dim)", margin: "4px 0" }}>
+            <div key={i} style={{ fontSize: 12, color: "var(--text-muted)", margin: "4px 0" }}>
               🔧 {p.tool} {p.state ? `(${p.state})` : ""}
             </div>
           );
         }
         if (p.type === "reasoning" && showThinking) {
           return (
-            <div key={i} style={{ fontSize: 12, color: "var(--text-dim)", fontStyle: "italic", margin: "4px 0" }}>
+            <div key={i} style={{ fontSize: 12, color: "var(--text-muted)", fontStyle: "italic", margin: "4px 0" }}>
               💭 {p.text}
             </div>
           );

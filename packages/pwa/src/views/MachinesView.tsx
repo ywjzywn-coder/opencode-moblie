@@ -61,7 +61,7 @@ export function MachinesView({ onOpenSessions, onLogout }: Props) {
               }}
               style={
                 selectedMachineId === m.id
-                  ? { borderColor: "var(--accent)" }
+                  ? { borderColor: "var(--primary)" }
                   : !m.online
                     ? { opacity: 0.5 }
                     : undefined
@@ -69,7 +69,7 @@ export function MachinesView({ onOpenSessions, onLogout }: Props) {
             >
               <div style={{
                 width: 10, height: 10, borderRadius: "50%",
-                background: m.online ? "var(--success)" : "var(--text-dim)",
+                background: m.online ? "var(--success)" : "var(--text-muted)",
                 flexShrink: 0,
               }} />
               <div className="meta">
@@ -87,7 +87,7 @@ export function MachinesView({ onOpenSessions, onLogout }: Props) {
                       autoFocus
                       style={{ fontSize: 14, padding: "4px 8px" }}
                     />
-                    <button onClick={(e) => { e.stopPropagation(); saveEdit(); }} style={{ padding: "4px 8px", fontSize: 12, background: "var(--accent)", borderColor: "var(--accent)", color: "white" }}>✓</button>
+                    <button onClick={(e) => { e.stopPropagation(); saveEdit(); }} style={{ padding: "4px 8px", fontSize: 12, background: "var(--primary)", borderColor: "var(--primary)", color: "white" }}>✓</button>
                     <button onClick={(e) => { e.stopPropagation(); cancelEdit(); }} style={{ padding: "4px 8px", fontSize: 12 }}>✕</button>
                   </div>
                 ) : (
@@ -105,7 +105,7 @@ export function MachinesView({ onOpenSessions, onLogout }: Props) {
                   onClick={(e) => { e.stopPropagation(); startEdit(m.id, m.name); }}
                   style={{
                     flexShrink: 0, background: "none", border: "none", padding: 6,
-                    color: "var(--text-dim)", display: "flex", alignItems: "center",
+                    color: "var(--text-muted)", display: "flex", alignItems: "center",
                   }}
                   title="编辑名称"
                 >
@@ -115,7 +115,7 @@ export function MachinesView({ onOpenSessions, onLogout }: Props) {
                   </svg>
                 </button>
               )}
-              {editingId !== m.id && m.online && <span style={{ color: "var(--text-dim)" }}>›</span>}
+              {editingId !== m.id && m.online && <span style={{ color: "var(--text-muted)" }}>›</span>}
             </div>
           ))}
         </div>
