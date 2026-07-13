@@ -5,7 +5,7 @@ interface SessionItem {
   id: string;
   title?: string;
   directory: string;
-  time: { created: string };
+  time: { created: number; updated: number };
 }
 
 interface Props {
@@ -31,10 +31,11 @@ export function SessionsView({ directory, onBack, onOpenChat }: Props) {
     if (!client) return;
     try {
       const res = await (client as any).db.session.list();
-      let list = res.data ?? [];
+      let list: SessionItem[] = res.data ?? [];
       if (directory) {
         list = list.filter((s: SessionItem) => s.directory === directory);
       }
+      list.sort((a, b) => b.time.updated - a.time.updated);
       setSessions(list);
       setError(null);
     } catch (e) {
@@ -54,6 +55,7 @@ export function SessionsView({ directory, onBack, onOpenChat }: Props) {
     setCreating(true);
     try {
       const res = await (client as any).session.create({ body: {} });
+      await (client as any).db.invalidate();
       if (res.data) {
         onOpenChat(res.data.id);
       }
@@ -69,6 +71,7 @@ export function SessionsView({ directory, onBack, onOpenChat }: Props) {
     if (!client) return;
     try {
       await (client as any).session.delete({ path: { id } });
+      await (client as any).db.invalidate();
       setSessions((prev) => prev.filter((s) => s.id !== id));
     } catch (e) {
       setError((e as Error).message);
@@ -99,7 +102,7 @@ export function SessionsView({ directory, onBack, onOpenChat }: Props) {
                 <div className="sub">{new Date(s.time.created).toLocaleString()}</div>
               </div>
               <button
-                onClick={(e) => { e.stopPropagation(); deleteSession(s.id); }}
+                onClick={(e) => { e.stopPropagation(); if (confirm(`删除会话 "${s.title || "未命名会话"}"？`)) deleteSession(s.id); }}
                 style={{ fontSize: 11, padding: "4px 8px", color: "var(--error)" }}
               >删除</button>
             </div>

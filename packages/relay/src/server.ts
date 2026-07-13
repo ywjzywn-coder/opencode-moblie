@@ -102,7 +102,7 @@ export function createServer(opts: ServerOptions): { wss: WebSocketServer; close
         continue;
       }
       c.alive = false;
-      send(c.ws, { type: "pong" });
+      try { c.ws.ping(); } catch { /* noop */ }
     }
     for (const [id, m] of machines) {
       if (!m.alive) {

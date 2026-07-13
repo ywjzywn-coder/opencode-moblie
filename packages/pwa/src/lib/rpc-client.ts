@@ -1,15 +1,5 @@
 import type { RelayTransport } from "./relay-transport.js";
 
-export interface RpcClient {
-  rpc: (method: string, args: unknown) => Promise<unknown>;
-}
-
-export function createRpcClient(transport: RelayTransport): RpcClient {
-  return {
-    rpc: (method: string, args: unknown) => transport.rpc(method, args),
-  };
-}
-
 export interface SdkResult<T> {
   data?: T;
   error?: { message: string; name?: string };

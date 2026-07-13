@@ -12,17 +12,21 @@ export function FilePicker({ onSelect, onClose }: Props) {
   const [results, setResults] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const search = useCallback(async () => {
     if (!query.trim()) return;
     const client = getClient();
     if (!client) return;
     setLoading(true);
+    setError(null);
     try {
       const res = await (client as any).find.files({ query: { query: query.trim() } });
+      if (res.error) throw new Error(res.error.message);
       setResults(res.data ?? []);
       setSearched(true);
-    } catch {
+    } catch (e) {
+      setError((e as Error).message);
       setResults([]);
     } finally {
       setLoading(false);
@@ -52,7 +56,8 @@ export function FilePicker({ onSelect, onClose }: Props) {
           </button>
         </div>
         <div style={{ flex: 1, overflowY: "auto" }}>
-          {results.length === 0 && searched && !loading && (
+          {error && <div className="error-text" style={{ padding: "0 0 8px" }}>{error}</div>}
+          {results.length === 0 && searched && !loading && !error && (
             <div className="muted" style={{ textAlign: "center", padding: 20 }}>没有找到文件</div>
           )}
           {results.map((path) => (

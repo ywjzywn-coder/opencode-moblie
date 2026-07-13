@@ -115,15 +115,69 @@ input:focus, textarea:focus { border-color: var(--primary); }
 
 .chat { display: flex; flex-direction: column; height: 100%; }
 .chat .messages {
-  flex: 1; overflow-y: auto; padding: 12px;
-  display: flex; flex-direction: column; gap: 8px;
+  flex: 1; overflow-y: auto; padding: 8px 0;
+  display: flex; flex-direction: column; gap: 2px;
+  font-size: 13px; line-height: 1.55;
 }
-.msg { max-width: 88%; padding: 8px 12px; border-radius: var(--radius); font-size: 13px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
-.msg.user { align-self: flex-end; background: var(--primary); color: var(--bg); border-bottom-right-radius: 2px; }
-.msg.assistant { align-self: flex-start; background: var(--bg-panel); border: 1px solid var(--border-subtle); border-bottom-left-radius: 2px; }
-.msg .role-tag { font-size: 10px; color: var(--text-muted); margin-bottom: 4px; }
-.msg pre { background: var(--bg); padding: 8px; border-radius: 4px; overflow-x: auto; margin: 6px 0; font-size: 12px; border: 1px solid var(--border-subtle); }
+
+/* 终端流风格：不用气泡，左对齐纵向流 */
+.msg { word-break: break-word; }
+
+/* 用户消息：左侧 peach 竖线 + 面板底色 */
+.msg.user {
+  border-left: 2px solid var(--primary);
+  background: var(--bg-panel);
+  padding: 8px 12px 8px 14px;
+  margin: 6px 0;
+  white-space: pre-wrap;
+  color: var(--text);
+}
+
+/* 助手内容：无边框无底色，左缩进 */
+.msg.assistant {
+  padding: 2px 12px 2px 24px;
+  white-space: pre-wrap;
+  color: var(--text);
+}
+
+.msg pre { background: var(--bg-panel); padding: 8px 10px; border-radius: var(--radius); overflow-x: auto; margin: 6px 0; font-size: 12px; border: 1px solid var(--border-subtle); }
 .msg code { font-family: var(--mono); }
+
+/* 工具调用行：图标 + 文本单行 */
+.tool-row {
+  display: flex; align-items: baseline; gap: 8px;
+  padding: 2px 12px 2px 24px;
+  font-size: 12px; color: var(--text-muted);
+  white-space: pre-wrap; word-break: break-word;
+}
+.tool-row .glyph { flex-shrink: 0; width: 14px; text-align: center; color: var(--primary); font-weight: 600; }
+.tool-row.done .glyph { color: var(--text-muted); }
+.tool-row.error { color: var(--error); }
+.tool-row.error .glyph { color: var(--error); }
+.tool-row .tool-label { flex: 1; min-width: 0; }
+.tool-row .tool-path { color: var(--text); }
+
+/* 思考/推理：橙色斜体 */
+.reasoning-row {
+  padding: 2px 12px 2px 24px;
+  font-size: 12px; color: var(--warning); opacity: 0.75;
+  font-style: italic; white-space: pre-wrap; word-break: break-word;
+}
+
+/* 助手完成标记行 */
+.assistant-footer {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 12px 8px 24px;
+  font-size: 11px; color: var(--text-muted);
+}
+.assistant-footer .marker { color: var(--primary); }
+
+/* 文件引用 pill */
+.file-ref {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 12px 2px 24px;
+  font-size: 12px; color: var(--secondary);
+}
 
 .composer {
   display: flex; gap: 8px; padding: 10px 12px;

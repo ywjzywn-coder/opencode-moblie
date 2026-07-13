@@ -124,6 +124,10 @@ export function ChatView({ sessionId, onBack, onOpenDiff }: Props) {
       } else if (event.type === "permission.replied") {
         setPermission(null);
       } else if (event.type === "session.idle") {
+        const props = event.properties as { sessionID?: string };
+        if (props.sessionID && props.sessionID !== sessionId) return;
+        setSending(false);
+      } else if (event.type === "session.error") {
         setSending(false);
       }
     });
@@ -155,7 +159,8 @@ export function ChatView({ sessionId, onBack, onOpenDiff }: Props) {
       const body: any = { parts };
       if (model) body.model = model;
       if (agent) body.agent = agent;
-      await (client as any).session.promptAsync({ path: { id: sessionId }, body });
+      const res = await (client as any).session.promptAsync({ path: { id: sessionId }, body });
+      if (res?.error) throw new Error(res.error.message);
       setError(null);
     } catch (e) {
       setError((e as Error).message);
@@ -268,8 +273,8 @@ export function ChatView({ sessionId, onBack, onOpenDiff }: Props) {
             flexShrink: 0, width: 38, height: 44, padding: 0, fontSize: 15,
             display: "flex", alignItems: "center", justifyContent: "center",
             background: showThinking ? "var(--primary-dim)" : "var(--bg-element)",
-            color: showThinking ? "var(--accent)" : "var(--text-muted)",
-            border: showThinking ? "1px solid var(--accent)" : "1px solid var(--border)",
+            color: showThinking ? "var(--warning)" : "var(--text-muted)",
+            border: showThinking ? "1px solid var(--warning)" : "1px solid var(--border-subtle)",
           }}
           disabled={sending}
           title={showThinking ? "思考已开启" : "思考已关闭"}
@@ -317,42 +322,77 @@ export function ChatView({ sessionId, onBack, onOpenDiff }: Props) {
 }
 
 function MessageBubble({ msg, showThinking }: { msg: ChatMessage; showThinking: boolean }) {
-  return (
-    <div className={`msg ${msg.role}`}>
-      <div className="role-tag">{msg.role === "user" ? "你" : "opencode"}</div>
-      <PartsRenderer parts={msg.parts} fallback={msg.text} showThinking={showThinking} />
-    </div>
-  );
+  if (msg.role === "user") {
+    return (
+      <div className="msg user">
+        {msg.parts.length === 0 ? msg.text : <PartsRenderer parts={msg.parts} fallback={msg.text} showThinking={showThinking} />}
+      </div>
+    );
+  }
+  return <PartsRenderer parts={msg.parts} fallback={msg.text} showThinking={showThinking} />;
+}
+
+const TOOL_GLYPHS: Record<string, string> = {
+  bash: "$",
+  read: "→",
+  glob: "✱",
+  grep: "✱",
+  edit: "←",
+  write: "←",
+  webfetch: "%",
+  websearch: "◈",
+  patch: "%",
+  apply_patch: "%",
+  todowrite: "⚙",
+  task: "◇",
+};
+
+function toolLabel(p: Part): { glyph: string; label: string; path?: string } {
+  const name = (p.tool ?? "").toLowerCase();
+  const glyph = TOOL_GLYPHS[name] ?? "⚙";
+  const capitalized = name ? name.charAt(0).toUpperCase() + name.slice(1) : "Tool";
+  return { glyph, label: capitalized, path: p.path };
 }
 
 function PartsRenderer({ parts, fallback, showThinking }: { parts: Part[]; fallback: string; showThinking: boolean }) {
   if (parts.length === 0) {
-    return <div>{fallback}</div>;
+    return <div className="msg assistant">{fallback}</div>;
   }
   return (
     <>
       {parts.map((p, i) => {
         if (p.type === "text") {
-          return <div key={i}>{p.text}</div>;
+          if (!p.text) return null;
+          return <div key={i} className="msg assistant">{p.text}</div>;
         }
         if (p.type === "file") {
           return (
-            <div key={i} style={{ fontSize: 12, color: "var(--accent)", margin: "4px 0" }}>
-              📎 {p.path ?? p.text}
+            <div key={i} className="file-ref">
+              <span>📎</span>
+              <span>{(p.path ?? p.text ?? "").split("/").pop()}</span>
             </div>
           );
         }
         if (p.type === "tool") {
+          const { glyph, label, path } = toolLabel(p);
+          const done = p.state === "completed" || p.state === "complete";
+          const errored = p.state === "error" || p.state === "failed";
           return (
-            <div key={i} style={{ fontSize: 12, color: "var(--text-muted)", margin: "4px 0" }}>
-              🔧 {p.tool} {p.state ? `(${p.state})` : ""}
+            <div key={i} className={`tool-row ${errored ? "error" : done ? "done" : ""}`}>
+              <span className="glyph">{glyph}</span>
+              <span className="tool-label">
+                {label}
+                {path && <span className="tool-path"> {path.split("/").slice(-2).join("/")}</span>}
+                {p.state && !done && !errored ? ` · ${p.state}` : ""}
+              </span>
             </div>
           );
         }
         if (p.type === "reasoning" && showThinking) {
+          if (!p.text) return null;
           return (
-            <div key={i} style={{ fontSize: 12, color: "var(--text-muted)", fontStyle: "italic", margin: "4px 0" }}>
-              💭 {p.text}
+            <div key={i} className="reasoning-row">
+              {p.text}
             </div>
           );
         }

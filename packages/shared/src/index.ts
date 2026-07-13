@@ -1,8 +1,5 @@
-export const PROTOCOL_VERSION = 2 as const;
-
 export const DEFAULT_RELAY_PORT = 4097 as const;
 export const HEARTBEAT_INTERVAL_MS = 15000 as const;
-export const REQUEST_TIMEOUT_MS = 300000 as const;
 
 export interface MachineInfo {
   id: string;
@@ -77,11 +74,4 @@ export function parseMessage(data: unknown): AnyMessage | null {
   const m = data as Record<string, unknown>;
   if (typeof m.type !== "string") return null;
   return m as unknown as AnyMessage;
-}
-
-export type RpcHandler = (method: string, args: unknown) => Promise<unknown>;
-
-export interface RpcResult<T = unknown> {
-  result?: T;
-  error?: string;
 }

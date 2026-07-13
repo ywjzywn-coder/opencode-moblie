@@ -57,10 +57,6 @@ export class RelayTransport {
     return this.ready;
   }
 
-  get connected(): boolean {
-    return this.ws !== null && this.ws.readyState === WebSocket.OPEN;
-  }
-
   renameMachine(machineId: string, name: string): void {
     this.send({ type: "machine:rename", machineId, name } as ClientToRelayMessage);
   }

@@ -28,6 +28,7 @@ export function AgentSelector({ current, onSelect, onClose }: Props) {
   const getClient = useStore((s) => s.getClient);
   const [agents, setAgents] = useState<AgentInfo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const client = getClient();
@@ -35,8 +36,11 @@ export function AgentSelector({ current, onSelect, onClose }: Props) {
     (async () => {
       try {
         const res = await (client as any).app.agents();
+        if (res.error) throw new Error(res.error.message);
         const all = (res.data ?? []) as AgentInfo[];
         setAgents(all.filter((a) => a.mode === "primary" || a.mode === "all"));
+      } catch (e) {
+        setError((e as Error).message);
       } finally {
         setLoading(false);
       }
@@ -51,6 +55,7 @@ export function AgentSelector({ current, onSelect, onClose }: Props) {
           <button className="back-btn" onClick={onClose}>✕</button>
         </div>
         {loading && <div className="muted"><span className="spinner" /> 加载中...</div>}
+        {error && <div className="error-text">{error}</div>}
         <div
           className="list-item"
           onClick={() => { onSelect(""); onClose(); }}
