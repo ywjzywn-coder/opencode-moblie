@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useStore } from "../lib/store.js";
 
 interface SessionItem {
@@ -8,12 +8,19 @@ interface SessionItem {
   time: { created: number; updated: number };
 }
 
+interface ProjectInfo {
+  id: string;
+  worktree?: string;
+  icon?: { url?: string };
+}
+
 interface ProjectGroup {
   directory: string;
   name: string;
   sessionCount: number;
   lastUpdated: number;
   sessionIds: string[];
+  iconUrl?: string;
 }
 
 interface Props {
@@ -23,7 +30,7 @@ interface Props {
 
 export function ProjectsView({ onBack, onOpenProject }: Props) {
   const getClient = useStore((s) => s.getClient);
-  const [sessions, setSessions] = useState<SessionItem[]>([]);
+  const [projects, setProjects] = useState<ProjectGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -32,22 +39,54 @@ export function ProjectsView({ onBack, onOpenProject }: Props) {
     const client = getClient();
     if (!client) return;
     setLoading(true);
+    setError(null);
     try {
-      const res = await (client as any).session.list();
-      const allSessions: SessionItem[] = res.data ?? [];
+      const projRes = await (client as any).project.list();
+      const allProjects: ProjectInfo[] = projRes.data ?? [];
 
-      const dirs = [...new Set(allSessions.map((s) => s.directory).filter(Boolean))];
+      const dirs = allProjects
+        .map((p) => p.worktree)
+        .filter((d): d is string => !!d && d !== "/");
+
       const existsRes = await (client as any).fs.existsBatch({ paths: dirs });
       const dirMap = new Map<string, boolean>();
       if (Array.isArray(existsRes.data)) {
         dirs.forEach((d, i) => dirMap.set(d, existsRes.data[i]));
       }
-      setSessions(allSessions.filter((s) => dirMap.get(s.directory) !== false));
-      setError(null);
+
+      const groups = new Map<string, ProjectGroup>();
+
+      for (const p of allProjects) {
+        const dir = p.worktree;
+        if (!dir || dir === "/") continue;
+        if (dirMap.get(dir) === false) continue;
+        const name = dir.split("/").pop() || dir;
+        if (!groups.has(dir)) {
+          groups.set(dir, {
+            directory: dir,
+            name,
+            sessionCount: 0,
+            lastUpdated: 0,
+            sessionIds: [],
+            iconUrl: p.icon?.url,
+          });
+        }
+      }
+
+      const sessionRes = await (client as any).session.list();
+      const allSessions: SessionItem[] = sessionRes.data ?? [];
+      for (const s of allSessions) {
+        const dir = s.directory;
+        if (!dir || !groups.has(dir)) continue;
+        const g = groups.get(dir)!;
+        g.sessionCount++;
+        g.sessionIds.push(s.id);
+        if (s.time.updated > g.lastUpdated) g.lastUpdated = s.time.updated;
+      }
+
+      setProjects(Array.from(groups.values()).sort((a, b) => b.lastUpdated - a.lastUpdated));
     } catch (e) {
       setError((e as Error).message);
-      const res = await (client as any).session.list();
-      setSessions(res.data ?? []);
     } finally {
       setLoading(false);
     }
@@ -56,28 +95,6 @@ export function ProjectsView({ onBack, onOpenProject }: Props) {
   useEffect(() => {
     refresh();
   }, [refresh]);
-
-  const projects = useMemo<ProjectGroup[]>(() => {
-    const groups = new Map<string, ProjectGroup>();
-    for (const s of sessions) {
-      const dir = s.directory || "/unknown";
-      if (!groups.has(dir)) {
-        const name = dir.split("/").pop() || dir;
-        groups.set(dir, {
-          directory: dir,
-          name,
-          sessionCount: 0,
-          lastUpdated: 0,
-          sessionIds: [],
-        });
-      }
-      const g = groups.get(dir)!;
-      g.sessionCount++;
-      g.sessionIds.push(s.id);
-      if (s.time.updated > g.lastUpdated) g.lastUpdated = s.time.updated;
-    }
-    return Array.from(groups.values()).sort((a, b) => b.lastUpdated - a.lastUpdated);
-  }, [sessions]);
 
   const deleteProject = async (p: ProjectGroup) => {
     if (!confirm(`删除项目 "${p.name}" 下的全部 ${p.sessionCount} 个会话？`)) return;
@@ -88,7 +105,7 @@ export function ProjectsView({ onBack, onOpenProject }: Props) {
       for (const sid of p.sessionIds) {
         await (client as any).session.delete({ path: { id: sid } });
       }
-      setSessions((prev) => prev.filter((s) => s.directory !== p.directory));
+      setProjects((prev) => prev.filter((p2) => p2.directory !== p.directory));
       setError(null);
     } catch (e) {
       setError((e as Error).message);
@@ -120,13 +137,17 @@ export function ProjectsView({ onBack, onOpenProject }: Props) {
               className="list-item"
               onClick={() => onOpenProject(p.directory)}
             >
-              <svg
-                width="22" height="22" viewBox="0 0 24 24" fill="none"
-                stroke="var(--accent)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"
-                style={{ flexShrink: 0 }}
-              >
-                <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/>
-              </svg>
+              {p.iconUrl ? (
+                <img src={p.iconUrl} width={22} height={22} style={{ flexShrink: 0, borderRadius: 4 }} alt="" />
+              ) : (
+                <svg
+                  width="22" height="22" viewBox="0 0 24 24" fill="none"
+                  stroke="var(--text-muted)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"
+                  style={{ flexShrink: 0 }}
+                >
+                  <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/>
+                </svg>
+              )}
               <div className="meta">
                 <div className="name">{p.name}</div>
                 <div className="sub" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
