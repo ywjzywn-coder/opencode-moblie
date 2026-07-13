@@ -1,0 +1,23 @@
+{
+  "name": "opencode-remote",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Control opencode on your computer from your phone (PWA + relay + agent)",
+  "type": "module",
+  "scripts": {
+    "dev:relay": "pnpm --filter @opencode-remote/relay dev",
+    "dev:pwa": "pnpm --filter @opencode-remote/pwa dev",
+    "build:shared": "pnpm --filter @opencode-remote/shared build",
+    "build:relay": "pnpm --filter @opencode-remote/relay build",
+    "build:plugin": "pnpm --filter opencode-remote-plugin build",
+    "build:pwa": "pnpm --filter @opencode-remote/pwa build",
+    "build": "pnpm -r --filter=!@opencode-remote/pwa build && pnpm build:pwa",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "name": "opencode-remote-plugin",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "bin": {
+    "opencode-remote-daemon": "./dist/daemon.js"
+  },
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/daemon.ts",
+    "start:daemon": "node dist/daemon.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@opencode-ai/sdk": "^1.17.0",
+    "@opencode-remote/shared": "workspace:*"
+  },
+  "peerDependencies": {
+    "@opencode-ai/plugin": "^1.17.0"
+  },
+  "devDependencies": {
+    "@opencode-ai/plugin": "^1.17.0",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}
