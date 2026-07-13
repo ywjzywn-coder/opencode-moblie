@@ -57,6 +57,7 @@ export function ChatView({ sessionId, onBack, onOpenDiff }: Props) {
   const [agent, setAgent] = useState<string | null>(null);
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
   const [showThinking, setShowThinking] = useState(true);
+  const [connected, setConnected] = useState(true);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
@@ -132,6 +133,38 @@ export function ChatView({ sessionId, onBack, onOpenDiff }: Props) {
       }
     });
   }, [getTransport, sessionId]);
+
+  useEffect(() => {
+    const transport = getTransport();
+    if (!transport) return;
+    setConnected(transport.connected);
+    const offStatus = transport.onStatusChange((c) => setConnected(c));
+    const offReconnect = transport.onReconnect(() => {
+      // 断线重连后：重新拉取消息补齐错过的内容，并根据最后一条消息判断是否仍在处理中
+      const client = getClient();
+      if (!client) return;
+      (client as any).session.messages({ path: { id: sessionId } })
+        .then((res: any) => {
+          const msgs: ChatMessage[] = [];
+          for (const m of res.data ?? []) {
+            const parts = (m.parts ?? []) as Part[];
+            const text = parts.filter((p) => p.type === "text").map((p) => p.text ?? "").join("");
+            if (m.info.role === "user" || m.info.role === "assistant") {
+              msgs.push({ role: m.info.role, text, parts, infoId: m.info.id });
+            }
+          }
+          setMessages(msgs);
+          setError(null);
+          const last = msgs[msgs.length - 1];
+          const stillRunning = last?.role === "assistant" && last.parts.some(
+            (p) => p.type === "tool" && (p.state === "running" || p.state === "pending"),
+          );
+          setSending(!!stillRunning);
+        })
+        .catch((e: Error) => setError(e.message));
+    });
+    return () => { offStatus(); offReconnect(); };
+  }, [getTransport, getClient, sessionId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -231,6 +264,14 @@ export function ChatView({ sessionId, onBack, onOpenDiff }: Props) {
         {onOpenDiff && <button onClick={onOpenDiff} style={{ fontSize: 11, padding: "6px 8px" }}>改动</button>}
         {sending && <button onClick={abort} className="danger" style={{ fontSize: 11, padding: "6px 8px" }}>停止</button>}
       </div>
+      {!connected && (
+        <div style={{
+          background: "var(--warning)", color: "var(--bg)", fontSize: 12, fontWeight: 600,
+          padding: "6px 14px", textAlign: "center",
+        }}>
+          连接已断开，正在重连...
+        </div>
+      )}
       <div className="content">
         <div className="chat">
           <div className="messages">

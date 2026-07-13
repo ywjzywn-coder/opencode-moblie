@@ -20,11 +20,25 @@ export class RelayTransport {
   private reqCounter = 0;
   private machineListeners = new Set<(machines: MachineInfoLike[]) => void>();
   private eventListeners = new Set<(event: EventPayload) => void>();
+  private reconnectListeners = new Set<() => void>();
+  private statusListeners = new Set<(connected: boolean) => void>();
+  private closedByUser = false;
+  private reconnectDelay = 1000;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private hadConnection = false;
 
-  constructor(private opts: RelayTransportOptions) {}
+  constructor(private opts: RelayTransportOptions) {
+    if (typeof window !== "undefined") {
+      window.addEventListener("online", () => this.ensureConnected());
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") this.ensureConnected();
+      });
+    }
+  }
 
   connect(): Promise<void> {
     if (this.ready) return this.ready;
+    this.closedByUser = false;
     this.ready = new Promise<void>((resolve, reject) => {
       const ws = new WebSocket(this.opts.url);
       this.ws = ws;
@@ -44,10 +58,19 @@ export class RelayTransport {
       });
 
       ws.addEventListener("close", () => {
+        const wasConnected = this.hadConnection;
         this.ws = null;
         this.ready = null;
+        this.hadConnection = false;
         for (const [, p] of this.pending) p.reject(new Error("connection closed"));
         this.pending.clear();
+        for (const l of this.statusListeners) l(false);
+        if (!this.closedByUser) {
+          this.scheduleReconnect();
+        }
+        if (wasConnected) {
+          // reject was already resolved once; nothing else to do here
+        }
       });
 
       ws.addEventListener("error", () => {
@@ -57,11 +80,53 @@ export class RelayTransport {
     return this.ready;
   }
 
+  private scheduleReconnect(): void {
+    if (this.reconnectTimer) return;
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      if (this.closedByUser) return;
+      this.connect()
+        .then(() => {
+          this.reconnectDelay = 1000;
+          for (const l of this.reconnectListeners) l();
+        })
+        .catch(() => {
+          this.reconnectDelay = Math.min(this.reconnectDelay * 2, 15000);
+          this.scheduleReconnect();
+        });
+    }, this.reconnectDelay);
+  }
+
+  /** Call when the app comes back to foreground / network resumes, to reconnect immediately. */
+  ensureConnected(): void {
+    if (this.closedByUser) return;
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) return;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    this.reconnectDelay = 1000;
+    this.connect()
+      .then(() => {
+        for (const l of this.reconnectListeners) l();
+      })
+      .catch(() => this.scheduleReconnect());
+  }
+
+  get connected(): boolean {
+    return this.ws !== null && this.ws.readyState === WebSocket.OPEN;
+  }
+
   renameMachine(machineId: string, name: string): void {
     this.send({ type: "machine:rename", machineId, name } as ClientToRelayMessage);
   }
 
   disconnect(): void {
+    this.closedByUser = true;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     this.ws?.close();
     this.ws = null;
     this.ready = null;
@@ -85,6 +150,18 @@ export class RelayTransport {
     return () => this.eventListeners.delete(cb);
   }
 
+  /** Fired after a dropped connection is re-established, so views can resync missed state. */
+  onReconnect(cb: () => void): () => void {
+    this.reconnectListeners.add(cb);
+    return () => this.reconnectListeners.delete(cb);
+  }
+
+  /** Fired whenever the connected state changes. */
+  onStatusChange(cb: (connected: boolean) => void): () => void {
+    this.statusListeners.add(cb);
+    return () => this.statusListeners.delete(cb);
+  }
+
   private doRpc(method: string, args: unknown): Promise<unknown> {
     const reqId = `r${++this.reqCounter}`;
     return new Promise<unknown>((resolve, reject) => {
@@ -106,7 +183,9 @@ export class RelayTransport {
   ): void {
     switch (msg.type) {
       case "auth:ok":
+        this.hadConnection = true;
         for (const l of this.machineListeners) l(msg.machines);
+        for (const l of this.statusListeners) l(true);
         resolveAuth();
         break;
       case "auth:error":
