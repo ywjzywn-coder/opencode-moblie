@@ -29,12 +29,6 @@ export function createRpcDispatcher(client: OpencodeClient): RpcDispatcher {
       throw new Error(`unknown method: ${method}`);
     }
     const result = await (handler as Function).call(target, args);
-    return serializeResult(result);
+    return result;
   };
-}
-
-function serializeResult(result: unknown): unknown {
-  if (result === undefined || result === null) return null;
-  if (typeof result !== "object") return result;
-  return JSON.parse(JSON.stringify(result));
 }

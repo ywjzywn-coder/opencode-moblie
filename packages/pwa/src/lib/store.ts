@@ -1,7 +1,8 @@
 import { create } from "zustand";
 import type { MachineInfo } from "@opencode-remote/shared";
 import { RelayTransport } from "./relay-transport.js";
-import { connect, type ConnectedSession, type ProxyClient } from "./client.js";
+import { createProxyClient } from "./rpc-client.js";
+import type { ConnectedSession, ProxyClient } from "./client.js";
 
 export interface ConnectionConfig {
   relayUrl: string;
@@ -65,13 +66,11 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   selectMachine: (machineId: string) => {
-    const { config, relayTransport } = get();
-    if (!config) return;
-    const connected = connect({ ...config, machineId });
-    if (relayTransport) {
-      connected.transport.onMachines((machines) => set({ machines }));
-    }
-    set({ selectedMachineId: machineId, session: connected });
+    const { relayTransport } = get();
+    if (!relayTransport) return;
+    relayTransport.setMachineId(machineId);
+    const client = createProxyClient(relayTransport) as ProxyClient;
+    set({ selectedMachineId: machineId, session: { transport: relayTransport, client, machineId } });
   },
 
   renameMachine: (machineId, name) => {
@@ -80,9 +79,8 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   disconnect: () => {
-    const { relayTransport, session } = get();
+    const { relayTransport } = get();
     relayTransport?.disconnect();
-    session?.transport.disconnect();
     set({ relayTransport: null, session: null, selectedMachineId: null, machines: [] });
   },
 

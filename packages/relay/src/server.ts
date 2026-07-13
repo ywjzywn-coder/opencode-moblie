@@ -89,7 +89,7 @@ export function createServer(opts: ServerOptions): { wss: WebSocketServer; close
     }
   });
 
-  const wss = new WebSocketServer({ server: httpServer });
+  const wss = new WebSocketServer({ server: httpServer, perMessageDeflate: true });
 
   const clients = new Set<ClientConn>();
   const machines = new Map<string, MachineConn>();
