@@ -10,7 +10,9 @@
     "build:shared": "pnpm --filter @opencode-remote/shared build",
     "build:relay": "pnpm --filter @opencode-remote/relay build",
     "build:plugin": "pnpm --filter opencode-remote-plugin build",
+    "build:panel": "pnpm --filter @opencode-remote/panel build",
     "build:pwa": "pnpm --filter @opencode-remote/pwa build",
+    "panel": "node packages/panel/dist/index.js",
     "build": "pnpm -r --filter=!@opencode-remote/pwa build && pnpm build:pwa",
     "typecheck": "pnpm -r typecheck"
   },

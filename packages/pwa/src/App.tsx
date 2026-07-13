@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useStore, loadStoredConfig, type ConnectionConfig } from "./lib/store.js";
+import { useStore, loadStoredConfig, readPairingFromUrl, type ConnectionConfig } from "./lib/store.js";
 import { SetupView } from "./views/SetupView.js";
 import { MachinesView } from "./views/MachinesView.js";
 import { ProjectsView } from "./views/ProjectsView.js";
@@ -16,7 +16,9 @@ export function App() {
   const [selectedDirectory, setSelectedDirectory] = useState<string | null>(null);
 
   useEffect(() => {
-    const stored = loadStoredConfig();
+    // 优先处理扫码跳转带来的配对信息
+    const paired = readPairingFromUrl();
+    const stored = paired ?? loadStoredConfig();
     if (stored) {
       setConfig(stored);
       connectToRelay()

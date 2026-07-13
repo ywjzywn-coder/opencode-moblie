@@ -104,3 +104,39 @@ export function loadStoredConfig(): ConnectionConfig | null {
     return null;
   }
 }
+
+/** 把配对码（base64url 编码的 {relayUrl, userToken}）解析成连接配置 */
+export function decodePairingCode(code: string): ConnectionConfig | null {
+  try {
+    const trimmed = code.trim();
+    if (!trimmed) return null;
+    // 兼容 base64url
+    let b64 = trimmed.replace(/-/g, "+").replace(/_/g, "/");
+    while (b64.length % 4) b64 += "=";
+    const json = decodeURIComponent(escape(atob(b64)));
+    const parsed = JSON.parse(json) as Partial<ConnectionConfig>;
+    if (parsed.relayUrl && parsed.userToken) {
+      return { relayUrl: parsed.relayUrl, userToken: parsed.userToken };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/** 从 URL hash 里读取 #pair=xxx 配对码（iPhone 相机扫码后跳转过来） */
+export function readPairingFromUrl(): ConnectionConfig | null {
+  try {
+    const hash = window.location.hash;
+    const m = hash.match(/[#&]pair=([^&]+)/);
+    if (!m) return null;
+    const cfg = decodePairingCode(decodeURIComponent(m[1]));
+    if (cfg) {
+      // 清掉 hash，避免刷新时重复处理和泄露 token
+      history.replaceState(null, "", window.location.pathname + window.location.search);
+    }
+    return cfg;
+  } catch {
+    return null;
+  }
+}
