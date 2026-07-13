@@ -8,19 +8,13 @@ interface SessionItem {
   time: { created: number; updated: number };
 }
 
-interface ProjectInfo {
-  id: string;
-  worktree?: string;
-  icon?: { url?: string };
-}
-
 interface ProjectGroup {
   directory: string;
   name: string;
   sessionCount: number;
   lastUpdated: number;
   sessionIds: string[];
-  iconUrl?: string;
+  projectId?: string;
 }
 
 interface Props {
@@ -41,20 +35,10 @@ export function ProjectsView({ onBack, onOpenProject }: Props) {
     setLoading(true);
     setError(null);
     try {
-      const projRes = await (client as any).project.list();
-      const allProjects: ProjectInfo[] = projRes.data ?? [];
+      const res = await (client as any).db.session.list();
+      const allSessions: SessionItem[] = res.data ?? [];
 
-      const worktrees = [...new Set(allProjects
-        .map((p) => p.worktree)
-        .filter((d): d is string => !!d && d !== "/"))];
-
-      const parents = [...new Set(worktrees.map((d) => {
-        const p = d.lastIndexOf("/");
-        return p > 0 ? d.substring(0, p) : "";
-      }).filter(Boolean))];
-
-      const dirs = [...new Set([...worktrees, ...parents])];
-
+      const dirs = [...new Set(allSessions.map((s) => s.directory).filter(Boolean))];
       const existsRes = await (client as any).fs.existsBatch({ paths: dirs });
       const dirMap = new Map<string, boolean>();
       if (Array.isArray(existsRes.data)) {
@@ -62,52 +46,25 @@ export function ProjectsView({ onBack, onOpenProject }: Props) {
       }
 
       const groups = new Map<string, ProjectGroup>();
-      const projectIcon = new Map<string, string>();
-
-      for (const p of allProjects) {
-        const dir = p.worktree;
-        if (!dir || dir === "/") continue;
-        projectIcon.set(dir, p.icon?.url ?? "");
-      }
-
-      const seenDirs = new Set<string>();
-      const allSessions: SessionItem[] = [];
-
-      for (const dir of dirs) {
-        if (seenDirs.has(dir)) continue;
-        seenDirs.add(dir);
-        try {
-          const res = await (client as any).session.list({ query: { directory: dir } });
-          const sessions: SessionItem[] = res.data ?? [];
-          for (const s of sessions) {
-            allSessions.push(s);
-            const sd = s.directory || dir;
-            if (!groups.has(sd)) {
-              groups.set(sd, {
-                directory: sd,
-                name: sd.split("/").pop() || sd,
-                sessionCount: 0,
-                lastUpdated: 0,
-                sessionIds: [],
-                iconUrl: projectIcon.get(sd) ?? projectIcon.get(dir) ?? "",
-              });
-            }
-          }
-        } catch { /* skip */ }
-      }
-
       for (const s of allSessions) {
-        const sd = s.directory;
-        if (!sd || !groups.has(sd)) continue;
-        const g = groups.get(sd)!;
+        const dir = s.directory;
+        if (!dir || dirMap.get(dir) === false) continue;
+        if (!groups.has(dir)) {
+          groups.set(dir, {
+            directory: dir,
+            name: dir.split("/").pop() || dir,
+            sessionCount: 0,
+            lastUpdated: 0,
+            sessionIds: [],
+          });
+        }
+        const g = groups.get(dir)!;
         g.sessionCount++;
         g.sessionIds.push(s.id);
         if (s.time.updated > g.lastUpdated) g.lastUpdated = s.time.updated;
       }
 
-      setProjects(Array.from(groups.values())
-        .filter((g) => dirMap.get(g.directory) !== false)
-        .sort((a, b) => b.lastUpdated - a.lastUpdated));
+      setProjects(Array.from(groups.values()).sort((a, b) => b.lastUpdated - a.lastUpdated));
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -128,6 +85,7 @@ export function ProjectsView({ onBack, onOpenProject }: Props) {
       for (const sid of p.sessionIds) {
         await (client as any).session.delete({ path: { id: sid } });
       }
+      await (client as any).db.invalidate();
       setProjects((prev) => prev.filter((p2) => p2.directory !== p.directory));
       setError(null);
     } catch (e) {
@@ -160,17 +118,13 @@ export function ProjectsView({ onBack, onOpenProject }: Props) {
               className="list-item"
               onClick={() => onOpenProject(p.directory)}
             >
-              {p.iconUrl ? (
-                <img src={p.iconUrl} width={22} height={22} style={{ flexShrink: 0, borderRadius: 4 }} alt="" />
-              ) : (
-                <svg
-                  width="22" height="22" viewBox="0 0 24 24" fill="none"
-                  stroke="var(--text-muted)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"
-                  style={{ flexShrink: 0 }}
-                >
-                  <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/>
-                </svg>
-              )}
+              <svg
+                width="22" height="22" viewBox="0 0 24 24" fill="none"
+                stroke="var(--text-muted)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"
+                style={{ flexShrink: 0 }}
+              >
+                <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/>
+              </svg>
               <div className="meta">
                 <div className="name">{p.name}</div>
                 <div className="sub" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>

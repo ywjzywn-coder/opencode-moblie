@@ -23,32 +23,29 @@ function wrapResult<T>(result: unknown): SdkResult<T> {
   return { data: result as T };
 }
 
-function sdkCall(transport: RelayTransport, method: string) {
-  return async (args?: unknown): Promise<SdkResult<unknown>> => {
+function createNamespace(transport: RelayTransport, prefix: string): any {
+  const handler = async (args?: unknown) => {
     try {
-      const result = await transport.rpc(method, args ?? {});
+      const result = await transport.rpc(prefix, args ?? {});
       return wrapResult(result);
     } catch (e) {
       return { error: { message: (e as Error).message, name: "RpcError" } };
     }
   };
-}
-
-function createNamespace(transport: RelayTransport, ns: string): Record<string, unknown> {
-  return new Proxy({}, {
+  return new Proxy(handler, {
     get: (_target, fn: string) => {
       if (fn === "then" || fn === "toJSON" || typeof fn !== "string") return undefined;
-      return sdkCall(transport, `${ns}.${fn}`);
+      return createNamespace(transport, `${prefix}.${fn}`);
     },
   });
 }
 
-export function createProxyClient(transport: RelayTransport): unknown {
-  const namespaces = ["session", "config", "project", "path", "vcs", "command", "provider", "find", "file", "fs", "app", "mcp", "lsp", "tui", "auth", "global", "instance", "pty", "tool"];
+export function createProxyClient(transport: RelayTransport): any {
+  const namespaces = ["session", "config", "project", "path", "vcs", "command", "provider", "find", "file", "fs", "app", "mcp", "lsp", "tui", "auth", "global", "instance", "pty", "tool", "db"];
   const client: Record<string, unknown> = {};
   for (const ns of namespaces) {
     client[ns] = createNamespace(transport, ns);
   }
-  client.postSessionIdPermissionsPermissionId = sdkCall(transport, "postSessionIdPermissionsPermissionId");
-  return client as unknown;
+  client.postSessionIdPermissionsPermissionId = createNamespace(transport, "postSessionIdPermissionsPermissionId");
+  return client;
 }

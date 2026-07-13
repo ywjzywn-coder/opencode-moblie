@@ -22,18 +22,18 @@ function readAllSessionsFromDb(): DbSession[] {
   if (!existsSync(dbPath)) return [];
   try {
     const output = execSync(
-      `sqlite3 -json "${dbPath}" "SELECT s.id, s.title, s.project_id, p.worktree, s.time_created, s.time_updated FROM session s LEFT JOIN project p ON s.project_id = p.id ORDER BY s.time_updated DESC;"`,
+      `sqlite3 -json "${dbPath}" "SELECT s.id, s.title, s.project_id, s.directory, s.time_created, s.time_updated FROM session s ORDER BY s.time_updated DESC;"`,
       { timeout: 5000, encoding: "utf8" }
     );
     const rows = JSON.parse(output) as Array<{
       id: string; title: string | null; project_id: string;
-      worktree: string | null; time_created: number; time_updated: number;
+      directory: string | null; time_created: number; time_updated: number;
     }>;
     dbCache = rows.map((r) => ({
       id: r.id,
       title: r.title || "Untitled",
       projectID: r.project_id,
-      directory: r.worktree || "/",
+      directory: r.directory || "/",
       time: { created: r.time_created, updated: r.time_updated },
     }));
     return dbCache;
