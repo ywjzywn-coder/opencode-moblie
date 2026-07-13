@@ -44,9 +44,16 @@ export function ProjectsView({ onBack, onOpenProject }: Props) {
       const projRes = await (client as any).project.list();
       const allProjects: ProjectInfo[] = projRes.data ?? [];
 
-      const dirs = allProjects
+      const worktrees = [...new Set(allProjects
         .map((p) => p.worktree)
-        .filter((d): d is string => !!d && d !== "/");
+        .filter((d): d is string => !!d && d !== "/"))];
+
+      const parents = [...new Set(worktrees.map((d) => {
+        const p = d.lastIndexOf("/");
+        return p > 0 ? d.substring(0, p) : "";
+      }).filter(Boolean))];
+
+      const dirs = [...new Set([...worktrees, ...parents])];
 
       const existsRes = await (client as any).fs.existsBatch({ paths: dirs });
       const dirMap = new Map<string, boolean>();
@@ -55,36 +62,52 @@ export function ProjectsView({ onBack, onOpenProject }: Props) {
       }
 
       const groups = new Map<string, ProjectGroup>();
+      const projectIcon = new Map<string, string>();
 
       for (const p of allProjects) {
         const dir = p.worktree;
         if (!dir || dir === "/") continue;
-        if (dirMap.get(dir) === false) continue;
-        const name = dir.split("/").pop() || dir;
-        if (!groups.has(dir)) {
-          groups.set(dir, {
-            directory: dir,
-            name,
-            sessionCount: 0,
-            lastUpdated: 0,
-            sessionIds: [],
-            iconUrl: p.icon?.url,
-          });
-        }
+        projectIcon.set(dir, p.icon?.url ?? "");
       }
 
-      const sessionRes = await (client as any).session.list();
-      const allSessions: SessionItem[] = sessionRes.data ?? [];
+      const seenDirs = new Set<string>();
+      const allSessions: SessionItem[] = [];
+
+      for (const dir of dirs) {
+        if (seenDirs.has(dir)) continue;
+        seenDirs.add(dir);
+        try {
+          const res = await (client as any).session.list({ query: { directory: dir } });
+          const sessions: SessionItem[] = res.data ?? [];
+          for (const s of sessions) {
+            allSessions.push(s);
+            const sd = s.directory || dir;
+            if (!groups.has(sd)) {
+              groups.set(sd, {
+                directory: sd,
+                name: sd.split("/").pop() || sd,
+                sessionCount: 0,
+                lastUpdated: 0,
+                sessionIds: [],
+                iconUrl: projectIcon.get(sd) ?? projectIcon.get(dir) ?? "",
+              });
+            }
+          }
+        } catch { /* skip */ }
+      }
+
       for (const s of allSessions) {
-        const dir = s.directory;
-        if (!dir || !groups.has(dir)) continue;
-        const g = groups.get(dir)!;
+        const sd = s.directory;
+        if (!sd || !groups.has(sd)) continue;
+        const g = groups.get(sd)!;
         g.sessionCount++;
         g.sessionIds.push(s.id);
         if (s.time.updated > g.lastUpdated) g.lastUpdated = s.time.updated;
       }
 
-      setProjects(Array.from(groups.values()).sort((a, b) => b.lastUpdated - a.lastUpdated));
+      setProjects(Array.from(groups.values())
+        .filter((g) => dirMap.get(g.directory) !== false)
+        .sort((a, b) => b.lastUpdated - a.lastUpdated));
     } catch (e) {
       setError((e as Error).message);
     } finally {

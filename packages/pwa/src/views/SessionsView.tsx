@@ -30,7 +30,7 @@ export function SessionsView({ directory, onBack, onOpenChat }: Props) {
     const client = getClient();
     if (!client) return;
     try {
-      const res = await (client as any).session.list();
+      const res = await (client as any).db.session.list();
       let list = res.data ?? [];
       if (directory) {
         list = list.filter((s: SessionItem) => s.directory === directory);
