@@ -39,6 +39,16 @@ pnpm build
 
 ### 3. 启动
 
+**推荐：控制面板（自带二维码配对 + 服务管理）**
+
+```bash
+node packages/panel/dist/index.js
+```
+
+打开 http://localhost:4099 查看控制面板。
+
+**或用旧版脚本：**
+
 ```bash
 ./start.sh
 ```
@@ -62,8 +72,10 @@ opencode-remote/
 │   ├── shared/          # WS 协议类型定义
 │   ├── relay/           # 中继服务器
 │   ├── plugin/          # daemon 守护进程
-│   └── pwa/             # 手机 PWA
-├── start.sh             # 一键启动脚本
+│   ├── pwa/             # 手机 PWA
+│   └── panel/           # 进程管理器 + 控制 UI（推荐启动方式）
+├── start.sh             # 旧版启动脚本
+├── AGENTS.md            # AI agent 交接文档（开发必读）
 ├── .relay-state.json    # （自动生成，已 gitignore）
 └── package.json
 ```
@@ -73,7 +85,8 @@ opencode-remote/
 ```bash
 pnpm build              # 构建全部
 pnpm typecheck          # 类型检查
-./start.sh              # 启动全部服务
+node packages/panel/dist/index.js  # 启动（推荐）
+./start.sh              # 启动全部服务（旧版）
 ```
 
 ## 功能

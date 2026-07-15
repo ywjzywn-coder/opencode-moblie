@@ -83,7 +83,7 @@ export function ProjectsView({ onBack, onOpenProject }: Props) {
     setDeleting(p.directory);
     try {
       for (const sid of p.sessionIds) {
-        await (client as any).session.delete({ path: { id: sid } });
+        await (client as any).session.delete({ path: { id: sid }, query: { directory: p.directory } });
       }
       await (client as any).db.invalidate();
       setProjects((prev) => prev.filter((p2) => p2.directory !== p.directory));

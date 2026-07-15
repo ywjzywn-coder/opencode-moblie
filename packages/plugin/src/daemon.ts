@@ -85,21 +85,55 @@ async function main(): Promise<void> {
 
   connection.start();
 
-  let eventStream: AsyncIterable<{ type: string; properties: unknown }> | null = null;
   let eventLoopRunning = false;
+  let stopped = false;
+
+  // 直接以原始 SSE 方式消费 opencode 的 /event 事件流。
+  //
+  // 不用 SDK 的 client.event.subscribe()：当 client 配置了自定义 fetch
+  // （用于给 serve 加 Basic Auth）时，SDK 内部重建 Request 会破坏 SSE 流式响应，
+  // 导致事件流永远不产出任何事件（即“手机发得出、收不到回复”的根因）。
+  // 原始 fetch + 手动解析 SSE 经验证可稳定收到全部事件。
+  const eventUrl = opencodeUrl.replace(/\/$/, "") + "/event";
+  const authHeader = opencodePassword
+    ? "Basic " + Buffer.from(`opencode:${opencodePassword}`).toString("base64")
+    : undefined;
 
   async function startEventLoop() {
     if (eventLoopRunning) return;
     eventLoopRunning = true;
     try {
-      const result = await client.event.subscribe();
-      eventStream = result as unknown as AsyncIterable<{ type: string; properties: unknown }>;
-      if (eventStream && typeof (eventStream as any)[Symbol.asyncIterator] === "function") {
-        for await (const event of eventStream as any) {
+      const res = await fetch(eventUrl, {
+        headers: authHeader ? { authorization: authHeader } : {},
+      });
+      if (!res.ok || !res.body) {
+        throw new Error(`/event 响应异常: ${res.status}`);
+      }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      while (!stopped) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        // SSE 事件以空行分隔
+        let sep: number;
+        while ((sep = buffer.indexOf("\n\n")) >= 0) {
+          const block = buffer.slice(0, sep);
+          buffer = buffer.slice(sep + 2);
+          const dataLine = block.split("\n").find((l) => l.startsWith("data:"));
+          if (!dataLine) continue;
+          let event: { type?: string; properties?: unknown };
+          try {
+            event = JSON.parse(dataLine.slice(5).trim());
+          } catch {
+            continue;
+          }
+          if (!event.type) continue;
           try {
             connection.sendEvent({
               type: event.type,
-              properties: event.properties as Record<string, unknown>,
+              properties: (event.properties ?? {}) as Record<string, unknown>,
             });
           } catch { /* ignore */ }
         }
@@ -108,13 +142,18 @@ async function main(): Promise<void> {
       console.error("[opencode-remote] 事件流错误:", (e as Error).message);
     } finally {
       eventLoopRunning = false;
+      // 事件流结束或出错后自动重连，否则回复内容再也推不到手机
+      if (!stopped) {
+        setTimeout(() => { void startEventLoop(); }, 1000);
+      }
     }
   }
 
-  startEventLoop();
+  void startEventLoop();
 
   const shutdown = () => {
     console.log("\n[opencode-remote] 正在关闭...");
+    stopped = true;
     connection.close();
     process.exit(0);
   };

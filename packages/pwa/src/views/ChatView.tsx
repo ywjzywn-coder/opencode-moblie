@@ -7,6 +7,7 @@ import { FilePicker } from "../components/FilePicker.js";
 
 interface Props {
   sessionId: string;
+  directory?: string;
   onBack: () => void;
   onOpenDiff?: () => void;
 }
@@ -39,9 +40,10 @@ interface AttachedFile {
   name: string;
 }
 
-export function ChatView({ sessionId, onBack, onOpenDiff }: Props) {
+export function ChatView({ sessionId, directory, onBack, onOpenDiff }: Props) {
   const getClient = useStore((s) => s.getClient);
   const getTransport = useStore((s) => s.getTransport);
+  const dirQuery = directory ? { directory } : undefined;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(true);
@@ -66,7 +68,7 @@ export function ChatView({ sessionId, onBack, onOpenDiff }: Props) {
     const client = getClient();
     if (!client) return;
     try {
-      const res = await (client as any).session.messages({ path: { id: sessionId } });
+      const res = await (client as any).session.messages({ path: { id: sessionId }, query: dirQuery });
       const msgs: ChatMessage[] = [];
       for (const m of res.data ?? []) {
         const parts = (m.parts ?? []) as Part[];
@@ -82,7 +84,7 @@ export function ChatView({ sessionId, onBack, onOpenDiff }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [getClient, sessionId]);
+  }, [getClient, sessionId, directory]);
 
   useEffect(() => {
     loadMessages();
@@ -93,10 +95,12 @@ export function ChatView({ sessionId, onBack, onOpenDiff }: Props) {
     if (!transport) return;
     return transport.onEvent((event) => {
       if (event.type === "message.part.updated") {
-        const props = event.properties as { input?: { messageID?: string; part?: Part; sessionID?: string }; output?: unknown };
-        const part = props.input?.part;
-        const messageID = props.input?.messageID;
-        const sessionID = props.input?.sessionID;
+        // opencode 事件结构：properties.sessionID + properties.part，
+        // 其中 messageID / sessionID 在 part 内部（不是 properties.input.part）
+        const props = event.properties as { sessionID?: string; part?: Part & { messageID?: string; sessionID?: string } };
+        const part = props.part;
+        const messageID = part?.messageID;
+        const sessionID = props.sessionID ?? part?.sessionID;
         if (!part || !messageID || sessionID !== sessionId) return;
         setMessages((prev) => {
           const existing = prev.find((m) => m.infoId === messageID);
@@ -113,14 +117,20 @@ export function ChatView({ sessionId, onBack, onOpenDiff }: Props) {
           }
           return prev;
         });
-      } else if (event.type === "permission.asked") {
-        const props = event.properties as { input?: { sessionID?: string; permissionID?: string; description?: string } };
-        if (props.input?.sessionID !== sessionId) return;
+      } else if (event.type === "permission.asked" || event.type === "permission.updated") {
+        // 兼容两种结构：properties 直接带字段，或包在 properties.input 里
+        const raw = event.properties as {
+          sessionID?: string; permissionID?: string; id?: string; title?: string; description?: string;
+          input?: { sessionID?: string; permissionID?: string; description?: string };
+        };
+        const p = raw.input ?? raw;
+        const sid = p.sessionID ?? (p as any).sessionId;
+        if (sid !== sessionId) return;
         setPermission({
           id: Math.random().toString(36).slice(2),
-          description: props.input.description ?? "权限请求",
+          description: (p as any).description ?? (p as any).title ?? "权限请求",
           sessionId,
-          permissionId: props.input.permissionID,
+          permissionId: (p as any).permissionID ?? (p as any).id,
         });
       } else if (event.type === "permission.replied") {
         setPermission(null);
@@ -143,7 +153,7 @@ export function ChatView({ sessionId, onBack, onOpenDiff }: Props) {
       // 断线重连后：重新拉取消息补齐错过的内容，并根据最后一条消息判断是否仍在处理中
       const client = getClient();
       if (!client) return;
-      (client as any).session.messages({ path: { id: sessionId } })
+      (client as any).session.messages({ path: { id: sessionId }, query: dirQuery })
         .then((res: any) => {
           const msgs: ChatMessage[] = [];
           for (const m of res.data ?? []) {
@@ -164,7 +174,7 @@ export function ChatView({ sessionId, onBack, onOpenDiff }: Props) {
         .catch((e: Error) => setError(e.message));
     });
     return () => { offStatus(); offReconnect(); };
-  }, [getTransport, getClient, sessionId]);
+  }, [getTransport, getClient, sessionId, directory]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -192,8 +202,11 @@ export function ChatView({ sessionId, onBack, onOpenDiff }: Props) {
       const body: any = { parts };
       if (model) body.model = model;
       if (agent) body.agent = agent;
-      const res = await (client as any).session.promptAsync({ path: { id: sessionId }, body });
-      if (res?.error) throw new Error(res.error.message);
+      const res = await (client as any).session.promptAsync({ path: { id: sessionId }, query: dirQuery, body });
+      // serve 对无法归属的会话会返回 {error:{name, data:{message}}}，此前被静默吞掉导致“发出去没反应”
+      if (res?.error) {
+        throw new Error(res.error.data?.message ?? res.error.message ?? res.error.name ?? "发送失败");
+      }
       setError(null);
     } catch (e) {
       setError((e as Error).message);
@@ -205,7 +218,7 @@ export function ChatView({ sessionId, onBack, onOpenDiff }: Props) {
     const client = getClient();
     if (!client) return;
     try {
-      await (client as any).session.abort({ path: { id: sessionId } });
+      await (client as any).session.abort({ path: { id: sessionId }, query: dirQuery });
     } catch (e) {
       setError((e as Error).message);
     }
@@ -217,6 +230,7 @@ export function ChatView({ sessionId, onBack, onOpenDiff }: Props) {
     try {
       await (client as any).session.command({
         path: { id: sessionId },
+        query: dirQuery,
         body: { command: "thinking", arguments: "" },
       });
       setShowThinking((prev) => !prev);
@@ -231,6 +245,7 @@ export function ChatView({ sessionId, onBack, onOpenDiff }: Props) {
     try {
       await (client as any).postSessionIdPermissionsPermissionId({
         path: { id: sessionId, permissionID: permission.permissionId },
+        query: dirQuery,
         body: { response: allow ? "allow" : "deny" },
       });
     } catch (e) {

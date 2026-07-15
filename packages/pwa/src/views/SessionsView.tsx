@@ -11,7 +11,7 @@ interface SessionItem {
 interface Props {
   directory?: string;
   onBack: () => void;
-  onOpenChat: (sessionId: string) => void;
+  onOpenChat: (sessionId: string, directory?: string) => void;
 }
 
 export function SessionsView({ directory, onBack, onOpenChat }: Props) {
@@ -57,7 +57,7 @@ export function SessionsView({ directory, onBack, onOpenChat }: Props) {
       const res = await (client as any).session.create({ body: {} });
       await (client as any).db.invalidate();
       if (res.data) {
-        onOpenChat(res.data.id);
+        onOpenChat(res.data.id, res.data.directory ?? directory);
       }
     } catch (e) {
       setError((e as Error).message);
@@ -66,11 +66,11 @@ export function SessionsView({ directory, onBack, onOpenChat }: Props) {
     }
   };
 
-  const deleteSession = async (id: string) => {
+  const deleteSession = async (id: string, dir?: string) => {
     const client = getClient();
     if (!client) return;
     try {
-      await (client as any).session.delete({ path: { id } });
+      await (client as any).session.delete({ path: { id }, query: dir ? { directory: dir } : undefined });
       await (client as any).db.invalidate();
       setSessions((prev) => prev.filter((s) => s.id !== id));
     } catch (e) {
@@ -96,13 +96,13 @@ export function SessionsView({ directory, onBack, onOpenChat }: Props) {
             </div>
           )}
           {sessions.map((s) => (
-            <div key={s.id} className="list-item" onClick={() => onOpenChat(s.id)}>
+            <div key={s.id} className="list-item" onClick={() => onOpenChat(s.id, s.directory)}>
               <div className="meta">
                 <div className="name">{s.title || "未命名会话"}</div>
                 <div className="sub">{new Date(s.time.created).toLocaleString()}</div>
               </div>
               <button
-                onClick={(e) => { e.stopPropagation(); if (confirm(`删除会话 "${s.title || "未命名会话"}"？`)) deleteSession(s.id); }}
+                onClick={(e) => { e.stopPropagation(); if (confirm(`删除会话 "${s.title || "未命名会话"}"？`)) deleteSession(s.id, s.directory); }}
                 style={{ fontSize: 11, padding: "4px 8px", color: "var(--error)" }}
               >删除</button>
             </div>

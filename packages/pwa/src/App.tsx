@@ -13,6 +13,7 @@ export function App() {
   const { config, connectToRelay, setConfig, disconnect } = useStore();
   const [screen, setScreen] = useState<Screen>("setup");
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [currentSessionDir, setCurrentSessionDir] = useState<string | undefined>(undefined);
   const [selectedDirectory, setSelectedDirectory] = useState<string | null>(null);
 
   useEffect(() => {
@@ -69,8 +70,9 @@ export function App() {
       <SessionsView
         directory={selectedDirectory ?? undefined}
         onBack={() => setScreen("projects")}
-        onOpenChat={(sessionId) => {
+        onOpenChat={(sessionId, dir) => {
           setCurrentSessionId(sessionId);
+          setCurrentSessionDir(dir ?? selectedDirectory ?? undefined);
           setScreen("chat");
         }}
       />
@@ -81,6 +83,7 @@ export function App() {
     return (
       <ChatView
         sessionId={currentSessionId}
+        directory={currentSessionDir}
         onBack={() => setScreen("sessions")}
         onOpenDiff={() => setScreen("diff")}
       />
@@ -91,6 +94,7 @@ export function App() {
     return (
       <DiffView
         sessionId={currentSessionId}
+        directory={currentSessionDir}
         onBack={() => setScreen("chat")}
       />
     );

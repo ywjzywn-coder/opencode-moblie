@@ -3,6 +3,7 @@ import { useStore } from "../lib/store.js";
 
 interface Props {
   sessionId: string;
+  directory?: string;
   onBack: () => void;
 }
 
@@ -14,8 +15,9 @@ interface FileDiff {
   deletions: number;
 }
 
-export function DiffView({ sessionId, onBack }: Props) {
+export function DiffView({ sessionId, directory, onBack }: Props) {
   const getClient = useStore((s) => s.getClient);
+  const dirQuery = directory ? { directory } : undefined;
   const [diffs, setDiffs] = useState<FileDiff[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -25,7 +27,7 @@ export function DiffView({ sessionId, onBack }: Props) {
     const client = getClient();
     if (!client) return;
     try {
-      const res = await (client as any).session.diff({ path: { id: sessionId } });
+      const res = await (client as any).session.diff({ path: { id: sessionId }, query: dirQuery });
       setDiffs(res.data ?? []);
       setError(null);
     } catch (e) {
@@ -33,7 +35,7 @@ export function DiffView({ sessionId, onBack }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [getClient, sessionId]);
+  }, [getClient, sessionId, directory]);
 
   useEffect(() => {
     loadDiff();
