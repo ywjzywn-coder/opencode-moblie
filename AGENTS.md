@@ -104,13 +104,15 @@ packages/
 
 ## 关键设计决策与已修复的 Bug
 
-### 1. 事件流：必须用原始 SSE，不能用 SDK subscribe（已修复）
+### 1. 事件流：必须用原始 SSE，且按 directory 多路订阅（已修复）
 
-**问题：** daemon 用 `client.event.subscribe()` 订阅 opencode 事件流。但 daemon 给 SDK client 配了自定义 `fetch`（用于加 Basic Auth），SDK 内部重建 Request 时破坏了 SSE 流式响应，导致事件流永远不产出任何事件。手机发消息能到后端、后端能生成回复，但回复推不回手机 -- 表现为"发出去没反应"。
+**问题 A：** daemon 用 `client.event.subscribe()` 订阅 opencode 事件流。但 daemon 给 SDK client 配了自定义 `fetch`（用于加 Basic Auth），SDK 内部重建 Request 时破坏了 SSE 流式响应，导致事件流永远不产出任何事件。手机发消息能到后端、后端能生成回复，但回复推不回手机 -- 表现为"发出去没反应"。
 
-**修复：** daemon 直接用原始 `fetch()` 读 `/event` SSE 端点，手动解析 SSE 块（`daemon.ts` startEventLoop）。带 auth header。带自动重连（断线 1 秒后重连）。
+**修复 A：** daemon 直接用原始 `fetch()` 读 `/event` SSE 端点，手动解析 SSE 块。带 auth header。带自动重连（断线 1 秒后重连）。**不要改回 SDK subscribe。**
 
-**不要改回 SDK subscribe。** 这是经过大量调试验证的，SDK + 自定义 fetch = SSE 不工作。
+**问题 B：** opencode serve 的事件流按 `directory` 分实例。默认 `GET /event` 只覆盖 serve 启动目录；跨项目会话的 `message.*` / `session.idle` 只出现在 `GET /event?directory=<path>`。只订默认流时：手机能拉历史消息、promptAsync 也能成功写库，但收不到流式事件 → 转圈不结束。
+
+**修复 B：** daemon 为每个会话目录维护独立 SSE 订阅（启动时扫 sqlite + RPC 带 directory 时 ensure + 30s 刷新）。`server.heartbeat` 只转发默认流。
 
 ### 2. 事件结构：properties 直接带字段，不在 properties.input 里（已修复）
 
@@ -186,7 +188,7 @@ setTimeout(()=>{console.log('events:',events,'types:',JSON.stringify(types));pro
 ## 近期产品改进
 
 - **发送超时提示**：发送后 45 秒无 `session.idle`，顶部显示“响应较慢”提示；上下文过大时建议新建会话。
-- **上下文用量显示**：顶栏显示 token 估算（input+cache），≥150K 黄色警告，≥180K 红色并显示横幅。
+- **上下文用量显示**：顶栏显示**当前上下文** token（取最近一条 assistant 的 `tokens.total`，不要用 `session.tokens`——那是累计值会虚高）；≥150K 黄色警告，≥180K 红色并显示横幅。
 
 ## Git
 

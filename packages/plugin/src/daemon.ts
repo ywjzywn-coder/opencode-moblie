@@ -4,7 +4,11 @@ import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { createOpencodeClient } from "@opencode-ai/sdk/client";
 import { RelayConnection } from "./relay-connection.js";
-import { createRpcDispatcher } from "./rpc-dispatcher.js";
+import {
+  createRpcDispatcher,
+  extractDirectoryFromArgs,
+  listSessionDirectories,
+} from "./rpc-dispatcher.js";
 
 interface DaemonConfig {
   relayUrl?: string;
@@ -64,6 +68,7 @@ async function main(): Promise<void> {
   } catch { /* ignore */ }
 
   const dispatcher = createRpcDispatcher(client);
+  let stopped = false;
 
   const connection = new RelayConnection({
     url: relayUrl,
@@ -75,6 +80,8 @@ async function main(): Promise<void> {
     },
     onRpc: async (reqId, method, args) => {
       try {
+        const dir = extractDirectoryFromArgs(args);
+        if (dir) ensureEventLoop(dir);
         const result = await dispatcher(method, args);
         connection.sendRpcResp(reqId, result);
       } catch (err) {
@@ -85,29 +92,44 @@ async function main(): Promise<void> {
 
   connection.start();
 
-  let eventLoopRunning = false;
-  let stopped = false;
-
-  // 直接以原始 SSE 方式消费 opencode 的 /event 事件流。
-  //
-  // 不用 SDK 的 client.event.subscribe()：当 client 配置了自定义 fetch
-  // （用于给 serve 加 Basic Auth）时，SDK 内部重建 Request 会破坏 SSE 流式响应，
-  // 导致事件流永远不产出任何事件（即“手机发得出、收不到回复”的根因）。
-  // 原始 fetch + 手动解析 SSE 经验证可稳定收到全部事件。
-  const eventUrl = opencodeUrl.replace(/\/$/, "") + "/event";
+  // opencode 的 /event 按 directory 分实例：
+  // 默认 /event 只覆盖 serve 启动目录；跨项目会话的 message/session 事件
+  // 只出现在 /event?directory=<path>。只订默认流会导致手机“发得出、收不到回复”。
+  const baseEventUrl = opencodeUrl.replace(/\/$/, "") + "/event";
   const authHeader = opencodePassword
     ? "Basic " + Buffer.from(`opencode:${opencodePassword}`).toString("base64")
     : undefined;
 
-  async function startEventLoop() {
-    if (eventLoopRunning) return;
-    eventLoopRunning = true;
+  const loops = new Map<string, { running: boolean }>();
+
+  function eventUrlFor(directory?: string): string {
+    if (!directory) return baseEventUrl;
+    return `${baseEventUrl}?directory=${encodeURIComponent(directory)}`;
+  }
+
+  function loopKey(directory?: string): string {
+    return directory ?? "";
+  }
+
+  function ensureEventLoop(directory?: string): void {
+    const key = loopKey(directory);
+    if (loops.has(key)) return;
+    const state = { running: false };
+    loops.set(key, state);
+    console.log(`[opencode-remote] 订阅事件流: ${directory ? directory : "(default)"}`);
+    void runEventLoop(directory, state);
+  }
+
+  async function runEventLoop(directory: string | undefined, state: { running: boolean }): Promise<void> {
+    if (state.running || stopped) return;
+    state.running = true;
+    const url = eventUrlFor(directory);
     try {
-      const res = await fetch(eventUrl, {
+      const res = await fetch(url, {
         headers: authHeader ? { authorization: authHeader } : {},
       });
       if (!res.ok || !res.body) {
-        throw new Error(`/event 响应异常: ${res.status}`);
+        throw new Error(`/event 响应异常: ${res.status} dir=${directory ?? "default"}`);
       }
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -116,7 +138,6 @@ async function main(): Promise<void> {
         const { done, value } = await reader.read();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
-        // SSE 事件以空行分隔
         let sep: number;
         while ((sep = buffer.indexOf("\n\n")) >= 0) {
           const block = buffer.slice(0, sep);
@@ -130,6 +151,13 @@ async function main(): Promise<void> {
             continue;
           }
           if (!event.type) continue;
+          // 各 directory 流都会推 server.heartbeat / server.connected，只转发一份默认流的
+          if (
+            (event.type === "server.heartbeat" || event.type === "server.connected")
+            && directory
+          ) {
+            continue;
+          }
           try {
             connection.sendEvent({
               type: event.type,
@@ -139,17 +167,30 @@ async function main(): Promise<void> {
         }
       }
     } catch (e) {
-      console.error("[opencode-remote] 事件流错误:", (e as Error).message);
-    } finally {
-      eventLoopRunning = false;
-      // 事件流结束或出错后自动重连，否则回复内容再也推不到手机
       if (!stopped) {
-        setTimeout(() => { void startEventLoop(); }, 1000);
+        console.error(
+          `[opencode-remote] 事件流错误 (${directory ?? "default"}):`,
+          (e as Error).message,
+        );
+      }
+    } finally {
+      state.running = false;
+      if (!stopped) {
+        setTimeout(() => { void runEventLoop(directory, state); }, 1000);
       }
     }
   }
 
-  void startEventLoop();
+  ensureEventLoop(undefined);
+  for (const dir of listSessionDirectories()) {
+    ensureEventLoop(dir);
+  }
+  setInterval(() => {
+    if (stopped) return;
+    try {
+      for (const dir of listSessionDirectories()) ensureEventLoop(dir);
+    } catch { /* ignore */ }
+  }, 30_000);
 
   const shutdown = () => {
     console.log("\n[opencode-remote] 正在关闭...");

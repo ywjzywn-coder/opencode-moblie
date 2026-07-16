@@ -22,7 +22,7 @@ function readAllSessionsFromDb(): DbSession[] {
   if (!existsSync(dbPath)) return [];
   try {
     const output = execSync(
-      `sqlite3 -json "${dbPath}" "SELECT s.id, s.title, s.project_id, s.directory, s.time_created, s.time_updated FROM session s ORDER BY s.time_updated DESC;"`,
+      `sqlite3 -json "${dbPath}" "SELECT s.id, s.title, s.project_id, s.directory, s.time_created, s.time_updated FROM session s WHERE s.parent_id IS NULL ORDER BY s.time_updated DESC;"`,
       { timeout: 5000, encoding: "utf8" }
     );
     const rows = JSON.parse(output) as Array<{
@@ -44,6 +44,22 @@ function readAllSessionsFromDb(): DbSession[] {
 
 export function invalidateDbCache(): void {
   dbCache = null;
+}
+
+export function listSessionDirectories(): string[] {
+  invalidateDbCache();
+  const dirs = new Set<string>();
+  for (const s of readAllSessionsFromDb()) {
+    if (s.directory) dirs.add(s.directory);
+  }
+  return [...dirs];
+}
+
+export function extractDirectoryFromArgs(args: unknown): string | undefined {
+  if (!args || typeof args !== "object") return undefined;
+  const q = (args as { query?: { directory?: string } }).query;
+  const d = q?.directory;
+  return typeof d === "string" && d.length > 0 ? d : undefined;
 }
 
 export function createRpcDispatcher(client: OpencodeClient): RpcDispatcher {

@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { hostname as osHostname } from "node:os";
 import { resolve } from "node:path";
 import { createServer } from "./server.js";
 import { Store } from "./store.js";
@@ -82,6 +83,13 @@ async function main(): Promise<void> {
     : resolve(process.cwd(), "packages/pwa/dist");
 
   const store = await loadOrCreateStore(statePath);
+  if (store.listMachines().length === 0) {
+    const name = process.env.OPENCODE_REMOTE_MACHINE_NAME ?? osHostname();
+    const { machineId, machineToken } = store.createMachineToken(name);
+    await persistStore(store, statePath);
+    console.log(`  Auto-created machine: ${name} (${machineId})`);
+    console.log(`  Machine token: ${machineToken}`);
+  }
   const { close } = createServer({
     port,
     hostname,

@@ -113,7 +113,7 @@ function startOpencode(): void {
 function startDaemon(): void {
   const { machineToken } = readState();
   if (!machineToken) {
-    log(services.daemon, "缺少 machineToken，请先启动中继生成 .relay-state.json");
+    log(services.daemon, "缺少 machineToken（中继应自动创建；可执行: node packages/relay/dist/cli.js machine-token）");
     services.daemon.status = "error";
     return;
   }

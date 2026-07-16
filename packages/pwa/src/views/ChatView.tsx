@@ -40,6 +40,36 @@ interface AttachedFile {
   name: string;
 }
 
+interface TokenUsage {
+  input: number;
+  cacheRead: number;
+  total: number;
+}
+
+function parseTokenUsage(tokens: unknown): TokenUsage | null {
+  if (!tokens || typeof tokens !== "object") return null;
+  const t = tokens as {
+    total?: number;
+    input?: number;
+    cache?: { read?: number };
+  };
+  const input = Number(t.input ?? 0) || 0;
+  const cacheRead = Number(t.cache?.read ?? 0) || 0;
+  const total = Number(t.total ?? 0) || input + cacheRead;
+  if (total <= 0) return null;
+  return { input, cacheRead, total };
+}
+
+function tokenUsageFromMessages(raw: Array<{ info?: { role?: string; tokens?: unknown } }>): TokenUsage | null {
+  for (let i = raw.length - 1; i >= 0; i--) {
+    const info = raw[i]?.info;
+    if (info?.role !== "assistant") continue;
+    const usage = parseTokenUsage(info.tokens);
+    if (usage) return usage;
+  }
+  return null;
+}
+
 export function ChatView({ sessionId, directory, onBack, onOpenDiff }: Props) {
   const getClient = useStore((s) => s.getClient);
   const getTransport = useStore((s) => s.getTransport);
@@ -60,7 +90,7 @@ export function ChatView({ sessionId, directory, onBack, onOpenDiff }: Props) {
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
   const [showThinking, setShowThinking] = useState(true);
   const [connected, setConnected] = useState(true);
-  const [tokenUsage, setTokenUsage] = useState<{ input: number; cacheRead: number; total: number } | null>(null);
+  const [tokenUsage, setTokenUsage] = useState<TokenUsage | null>(null);
   const [slowHint, setSlowHint] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -73,11 +103,6 @@ export function ChatView({ sessionId, directory, onBack, onOpenDiff }: Props) {
     try {
       const res = await (client as any).session.get({ path: { id: sessionId }, query: dirQuery });
       const data = res?.data ?? res;
-      if (data?.tokens) {
-        const input = data.tokens.input ?? 0;
-        const cacheRead = data.tokens.cache?.read ?? 0;
-        setTokenUsage({ input, cacheRead, total: input + cacheRead });
-      }
       if (data?.model?.id && data?.model?.providerID) {
         setModel({ providerID: data.model.providerID, modelID: data.model.id });
       }
@@ -90,8 +115,9 @@ export function ChatView({ sessionId, directory, onBack, onOpenDiff }: Props) {
     if (!client) return;
     try {
       const res = await (client as any).session.messages({ path: { id: sessionId }, query: dirQuery });
+      const raw = res.data ?? [];
       const msgs: ChatMessage[] = [];
-      for (const m of res.data ?? []) {
+      for (const m of raw) {
         const parts = (m.parts ?? []) as Part[];
         const text = parts.filter((p) => p.type === "text").map((p) => p.text ?? "").join("");
         if (m.info.role === "user" || m.info.role === "assistant") {
@@ -99,6 +125,8 @@ export function ChatView({ sessionId, directory, onBack, onOpenDiff }: Props) {
         }
       }
       setMessages(msgs);
+      const usage = tokenUsageFromMessages(raw);
+      if (usage) setTokenUsage(usage);
       setError(null);
     } catch (e) {
       setError((e as Error).message);
@@ -157,6 +185,54 @@ export function ChatView({ sessionId, directory, onBack, onOpenDiff }: Props) {
           }
           return prev;
         });
+      } else if (event.type === "message.part.delta") {
+        const props = event.properties as {
+          sessionID?: string;
+          messageID?: string;
+          partID?: string;
+          field?: string;
+          delta?: string;
+        };
+        if (props.sessionID !== sessionId || props.field !== "text" || !props.messageID || !props.delta) return;
+        const messageID = props.messageID;
+        const partID = props.partID;
+        const delta = props.delta;
+        setMessages((prev) => {
+          const existing = prev.find((m) => m.infoId === messageID);
+          if (!existing) {
+            return [...prev, {
+              role: "assistant",
+              text: delta,
+              parts: [{ type: "text", text: delta, id: partID }],
+              infoId: messageID,
+            }];
+          }
+          const partIdx = partID
+            ? existing.parts.findIndex((p) => p.id === partID)
+            : existing.parts.findIndex((p) => p.type === "text");
+          let newParts: Part[];
+          if (partIdx >= 0) {
+            const old = existing.parts[partIdx];
+            const updated = { ...old, type: old.type || "text", text: (old.text ?? "") + delta };
+            newParts = [...existing.parts.slice(0, partIdx), updated, ...existing.parts.slice(partIdx + 1)];
+          } else {
+            newParts = [...existing.parts, { type: "text", text: delta, id: partID }];
+          }
+          const newText = newParts.filter((p) => p.type === "text").map((p) => p.text ?? "").join("");
+          return prev.map((m) => m.infoId === messageID ? { ...m, parts: newParts, text: newText } : m);
+        });
+      } else if (event.type === "message.updated") {
+        // 当前上下文以最近一条 assistant 的 tokens.total 为准（session.tokens 是累计值，会虚高）
+        const props = event.properties as {
+          sessionID?: string;
+          info?: { role?: string; tokens?: unknown; sessionID?: string };
+        };
+        const info = props.info;
+        const sessionID = props.sessionID ?? info?.sessionID;
+        if (!info || sessionID !== sessionId) return;
+        if (info.role !== "assistant") return;
+        const usage = parseTokenUsage(info.tokens);
+        if (usage) setTokenUsage(usage);
       } else if (event.type === "permission.asked" || event.type === "permission.updated") {
         // 兼容两种结构：properties 直接带字段，或包在 properties.input 里
         const raw = event.properties as {
@@ -179,13 +255,14 @@ export function ChatView({ sessionId, directory, onBack, onOpenDiff }: Props) {
         if (props.sessionID && props.sessionID !== sessionId) return;
         setSending(false);
         setSlowHint(false);
+        void loadMessages();
         void loadSessionMeta();
       } else if (event.type === "session.error") {
         setSending(false);
         setSlowHint(false);
       }
     });
-  }, [getTransport, sessionId, loadSessionMeta]);
+  }, [getTransport, sessionId, loadMessages, loadSessionMeta]);
 
   useEffect(() => {
     const transport = getTransport();
@@ -198,8 +275,9 @@ export function ChatView({ sessionId, directory, onBack, onOpenDiff }: Props) {
       if (!client) return;
       (client as any).session.messages({ path: { id: sessionId }, query: dirQuery })
         .then((res: any) => {
+          const raw = res.data ?? [];
           const msgs: ChatMessage[] = [];
-          for (const m of res.data ?? []) {
+          for (const m of raw) {
             const parts = (m.parts ?? []) as Part[];
             const text = parts.filter((p) => p.type === "text").map((p) => p.text ?? "").join("");
             if (m.info.role === "user" || m.info.role === "assistant") {
@@ -207,6 +285,8 @@ export function ChatView({ sessionId, directory, onBack, onOpenDiff }: Props) {
             }
           }
           setMessages(msgs);
+          const usage = tokenUsageFromMessages(raw);
+          if (usage) setTokenUsage(usage);
           setError(null);
           const last = msgs[msgs.length - 1];
           const stillRunning = last?.role === "assistant" && last.parts.some(
@@ -251,6 +331,37 @@ export function ChatView({ sessionId, directory, onBack, onOpenDiff }: Props) {
         throw new Error(res.error.data?.message ?? res.error.message ?? res.error.name ?? "发送失败");
       }
       setError(null);
+      // 兜底：若事件流未推到（跨目录 SSE 未订阅等），轮询补齐回复
+      void (async () => {
+        for (let i = 0; i < 12; i++) {
+          await new Promise((r) => setTimeout(r, 2500));
+          if (!getClient()) return;
+          try {
+            const poll = await (client as any).session.messages({ path: { id: sessionId }, query: dirQuery });
+            const raw = poll.data ?? [];
+            const msgs: ChatMessage[] = [];
+            for (const m of raw) {
+              const p = (m.parts ?? []) as Part[];
+              const t = p.filter((x) => x.type === "text").map((x) => x.text ?? "").join("");
+              if (m.info.role === "user" || m.info.role === "assistant") {
+                msgs.push({ role: m.info.role, text: t, parts: p, infoId: m.info.id });
+              }
+            }
+            setMessages(msgs);
+            const usage = tokenUsageFromMessages(raw);
+            if (usage) setTokenUsage(usage);
+            const last = msgs[msgs.length - 1];
+            const busy = last?.role === "assistant" && last.parts.some(
+              (p) => p.type === "tool" && (p.state === "running" || p.state === "pending"),
+            );
+            if (last?.role === "assistant" && !busy && last.text) {
+              setSending(false);
+              setSlowHint(false);
+              return;
+            }
+          } catch { /* ignore poll errors */ }
+        }
+      })();
     } catch (e) {
       setError((e as Error).message);
       setSending(false);
@@ -311,8 +422,9 @@ export function ChatView({ sessionId, directory, onBack, onOpenDiff }: Props) {
   const agentLabel = !agent || agent === "" ? "默认" : (agent.toLowerCase().includes("plan") ? "规划" : agent.toLowerCase().includes("build") ? "构建" : agent);
 
   const formatTokens = (n: number) => {
-    if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
-    if (n >= 1_000) return (n / 1_000).toFixed(0) + "K";
+    if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, "") + "M";
+    if (n >= 10_000) return Math.round(n / 1_000) + "K";
+    if (n >= 1_000) return (n / 1_000).toFixed(1).replace(/\.0$/, "") + "K";
     return String(n);
   };
   const tokenWarn = tokenUsage && tokenUsage.total >= 150_000;
