@@ -60,9 +60,30 @@ export function ChatView({ sessionId, directory, onBack, onOpenDiff }: Props) {
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
   const [showThinking, setShowThinking] = useState(true);
   const [connected, setConnected] = useState(true);
+  const [tokenUsage, setTokenUsage] = useState<{ input: number; cacheRead: number; total: number } | null>(null);
+  const [slowHint, setSlowHint] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
+  const sendTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const loadSessionMeta = useCallback(async () => {
+    const client = getClient();
+    if (!client) return;
+    try {
+      const res = await (client as any).session.get({ path: { id: sessionId }, query: dirQuery });
+      const data = res?.data ?? res;
+      if (data?.tokens) {
+        const input = data.tokens.input ?? 0;
+        const cacheRead = data.tokens.cache?.read ?? 0;
+        setTokenUsage({ input, cacheRead, total: input + cacheRead });
+      }
+      if (data?.model?.id && data?.model?.providerID) {
+        setModel({ providerID: data.model.providerID, modelID: data.model.id });
+      }
+      if (data?.agent) setAgent(data.agent);
+    } catch { /* ignore meta load failures */ }
+  }, [getClient, sessionId, directory]);
 
   const loadMessages = useCallback(async () => {
     const client = getClient();
@@ -88,7 +109,26 @@ export function ChatView({ sessionId, directory, onBack, onOpenDiff }: Props) {
 
   useEffect(() => {
     loadMessages();
-  }, [loadMessages]);
+    loadSessionMeta();
+  }, [loadMessages, loadSessionMeta]);
+
+  useEffect(() => {
+    if (!sending) {
+      setSlowHint(false);
+      if (sendTimeoutRef.current) {
+        clearTimeout(sendTimeoutRef.current);
+        sendTimeoutRef.current = null;
+      }
+      return;
+    }
+    sendTimeoutRef.current = setTimeout(() => setSlowHint(true), 45000);
+    return () => {
+      if (sendTimeoutRef.current) {
+        clearTimeout(sendTimeoutRef.current);
+        sendTimeoutRef.current = null;
+      }
+    };
+  }, [sending]);
 
   useEffect(() => {
     const transport = getTransport();
@@ -138,11 +178,14 @@ export function ChatView({ sessionId, directory, onBack, onOpenDiff }: Props) {
         const props = event.properties as { sessionID?: string };
         if (props.sessionID && props.sessionID !== sessionId) return;
         setSending(false);
+        setSlowHint(false);
+        void loadSessionMeta();
       } else if (event.type === "session.error") {
         setSending(false);
+        setSlowHint(false);
       }
     });
-  }, [getTransport, sessionId]);
+  }, [getTransport, sessionId, loadSessionMeta]);
 
   useEffect(() => {
     const transport = getTransport();
@@ -267,6 +310,14 @@ export function ChatView({ sessionId, directory, onBack, onOpenDiff }: Props) {
 
   const agentLabel = !agent || agent === "" ? "默认" : (agent.toLowerCase().includes("plan") ? "规划" : agent.toLowerCase().includes("build") ? "构建" : agent);
 
+  const formatTokens = (n: number) => {
+    if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
+    if (n >= 1_000) return (n / 1_000).toFixed(0) + "K";
+    return String(n);
+  };
+  const tokenWarn = tokenUsage && tokenUsage.total >= 150_000;
+  const tokenCritical = tokenUsage && tokenUsage.total >= 180_000;
+
   return (
     <div className="app">
       <div className="topbar">
@@ -274,6 +325,18 @@ export function ChatView({ sessionId, directory, onBack, onOpenDiff }: Props) {
         <span className="title" style={{ fontSize: 12, flex: 1, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {model ? model.modelID : "对话"}
         </span>
+        {tokenUsage && (
+          <span
+            title={`输入 ${formatTokens(tokenUsage.input)} · 缓存 ${formatTokens(tokenUsage.cacheRead)}`}
+            style={{
+              fontSize: 10, padding: "4px 6px", borderRadius: 4, flexShrink: 0,
+              color: tokenCritical ? "var(--error)" : tokenWarn ? "var(--warning)" : "var(--text-muted)",
+              background: tokenCritical ? "rgba(224,108,117,0.12)" : tokenWarn ? "rgba(245,167,66,0.12)" : "transparent",
+            }}
+          >
+            {formatTokens(tokenUsage.total)}
+          </span>
+        )}
         <button onClick={() => setShowAgentSelector(true)} style={{ fontSize: 11, padding: "6px 8px" }}>{agentLabel}</button>
         <button onClick={() => setShowModelSelector(true)} style={{ fontSize: 11, padding: "6px 8px" }}>模型</button>
         {onOpenDiff && <button onClick={onOpenDiff} style={{ fontSize: 11, padding: "6px 8px" }}>改动</button>}
@@ -285,6 +348,22 @@ export function ChatView({ sessionId, directory, onBack, onOpenDiff }: Props) {
           padding: "6px 14px", textAlign: "center",
         }}>
           连接已断开，正在重连...
+        </div>
+      )}
+      {slowHint && sending && (
+        <div style={{
+          background: "var(--warning)", color: "var(--bg)", fontSize: 12, fontWeight: 600,
+          padding: "6px 14px", textAlign: "center",
+        }}>
+          响应较慢{tokenCritical || tokenWarn ? "，会话上下文过大，建议新建会话" : "，请稍候或点停止"}
+        </div>
+      )}
+      {tokenCritical && !sending && (
+        <div style={{
+          background: "rgba(224,108,117,0.15)", color: "var(--error)", fontSize: 12, fontWeight: 600,
+          padding: "6px 14px", textAlign: "center",
+        }}>
+          上下文已很大（{formatTokens(tokenUsage!.total)}），建议新建会话
         </div>
       )}
       <div className="content">
